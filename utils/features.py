@@ -22,8 +22,8 @@ def pack_maestro_dataset_to_hdf5(args):
     """
 
     # Arguments & parameters
-    dataset_dir = args.dataset_dir
-    workspace = args.workspace
+    dataset_dir = os.path.expanduser(args.dataset_dir)
+    workspace = os.path.expanduser(args.workspace)
 
     sample_rate = config.sample_rate
 
@@ -47,13 +47,30 @@ def pack_maestro_dataset_to_hdf5(args):
     for n in range(audios_num):
         logging.info('{} {}'.format(n, meta_dict['midi_filename'][n]))
 
-        # Read midi
         midi_path = os.path.join(dataset_dir, meta_dict['midi_filename'][n])
+        if not os.path.isfile(midi_path):
+            logging.warning('Skipping missing file: {}'.format(midi_path))
+            continue
+        audio_path = os.path.join(dataset_dir, meta_dict['audio_filename'][n])
+        if not os.path.isfile(audio_path):
+            # look for .flac file instead
+            flac_audio_path = os.path.splitext(audio_path)[0] + ".flac"
+            if os.path.isfile(flac_audio_path):
+                audio_path = flac_audio_path
+            else:
+                logging.warning('Skipping missing file: {}'.format(audio_path))
+                continue
+
+        # Read midi
         midi_dict = read_midi(midi_path)
 
         # Load audio
-        audio_path = os.path.join(dataset_dir, meta_dict['audio_filename'][n])
         (audio, _) = librosa.core.load(audio_path, sr=sample_rate, mono=True)
+
+        # check audio length vs csv length
+        duration = librosa.get_duration(y=audio, sr=sample_rate)
+        if int(duration) != int(meta_dict['duration'][n]):
+            logging.warning('Skipping file: {}, duration mismatch {} vs {}'.format(audio_path, duration, meta_dict['duration'][n]))
 
         packed_hdf5_path = os.path.join(waveform_hdf5s_dir, '{}.h5'.format(
             os.path.splitext(meta_dict['audio_filename'][n])[0]))
@@ -67,14 +84,14 @@ def pack_maestro_dataset_to_hdf5(args):
             hf.attrs.create('year', data=meta_dict['year'][n].encode(), dtype='S10')
             hf.attrs.create('midi_filename', data=meta_dict['midi_filename'][n].encode(), dtype='S100')
             hf.attrs.create('audio_filename', data=meta_dict['audio_filename'][n].encode(), dtype='S100')
-            hf.attrs.create('duration', data=meta_dict['duration'][n], dtype=np.float32)
+            hf.attrs.create('duration', data=duration, dtype=np.float32)
 
             hf.create_dataset(name='midi_event', data=[e.encode() for e in midi_dict['midi_event']], dtype='S100')
             hf.create_dataset(name='midi_event_time', data=midi_dict['midi_event_time'], dtype=np.float32)
             hf.create_dataset(name='waveform', data=float32_to_int16(audio), dtype=np.int16)
         
-    logging.info('Write hdf5 to {}'.format(packed_hdf5_path))
-    logging.info('Time: {:.3f} s'.format(time.time() - feature_time))
+        logging.info('Write hdf5 to {}'.format(packed_hdf5_path))
+        logging.info('Time: {:.3f} s'.format(time.time() - feature_time))
 
 
 def pack_maps_dataset_to_hdf5(args):

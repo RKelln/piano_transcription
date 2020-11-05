@@ -1,20 +1,21 @@
-import os
-import logging
-import h5py
-import soundfile
-import librosa
 import audioread
-import numpy as np
-import pandas as pd
+import collections
+import config
 import csv
 import datetime
-import collections
+import glob
+import h5py
+import librosa
+import logging
+import numpy as np
+import os
+import pandas as pd
 import pickle
-from mido import MidiFile
+import soundfile
 
+from mido import MidiFile
 from piano_vad import (note_detection_with_onset_offset_regress, 
     pedal_detection_with_onset_offset_regress, onsets_frames_note_detection, onsets_frames_pedal_detection)
-import config
 
 
 def create_folder(fd):
@@ -40,6 +41,18 @@ def traverse_folder(folder):
             paths.append(filepath)
             
     return names, paths
+
+
+def highest_iteration(folder):
+    """Returns the highest iteration in the folder (based off its filename)"""
+    highest = 0
+    for f in glob.glob(os.path.join(folder, "*.pth")):
+        iteration_split = os.path.basename(f).split('_', 1)
+        if len(iteration_split) == 2:
+            iteration = int(iteration_split[0])
+            if iteration > highest:
+                highest = iteration
+    return highest
 
 
 def note_to_freq(piano_note):
@@ -1434,3 +1447,4 @@ def load_audio(path, sr=22050, mono=True, offset=0.0, duration=None,
     y = np.ascontiguousarray(y, dtype=dtype)
 
     return (y, sr)
+

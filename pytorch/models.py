@@ -34,7 +34,7 @@ def init_gru(rnn):
     def _concat_init(tensor, init_funcs):
         (length, fan_out) = tensor.shape
         fan_in = length // len(init_funcs)
-    
+        
         for (i, init_func) in enumerate(init_funcs):
             init_func(tensor[i * fan_in : (i + 1) * fan_in, :])
         
@@ -102,7 +102,7 @@ class ConvBlock(nn.Module):
 
 
 class AcousticModelCRnn8Dropout(nn.Module):
-    def __init__(self, classes_num, midfeat, momentum):
+    def __init__(self, classes_num, midfeat, momentum, bidirectional=True):
         super(AcousticModelCRnn8Dropout, self).__init__()
 
         self.conv_block1 = ConvBlock(in_channels=1, out_channels=48, momentum=momentum)
@@ -113,10 +113,11 @@ class AcousticModelCRnn8Dropout(nn.Module):
         self.fc5 = nn.Linear(midfeat, 768, bias=False)
         self.bn5 = nn.BatchNorm1d(768, momentum=momentum)
 
-        self.gru = nn.GRU(input_size=768, hidden_size=256, num_layers=2, 
-            bias=True, batch_first=True, dropout=0., bidirectional=True)
+        gru_size = 256 
+        self.gru = nn.GRU(input_size=768, hidden_size=gru_size, num_layers=2, 
+            bias=True, batch_first=True, dropout=0., bidirectional=bidirectional)
 
-        self.fc = nn.Linear(512, classes_num, bias=True)
+        self.fc = nn.Linear(gru_size * (2 if bidirectional else 1), classes_num, bias=True)
         
         self.init_weight()
 
@@ -149,13 +150,15 @@ class AcousticModelCRnn8Dropout(nn.Module):
         x = F.dropout(x, p=0.5, training=self.training, inplace=True)
         
         (x, _) = self.gru(x)
+        #print("x:", x, "shape:", x.shape, "wtf:", wtf)
+        # x shape: torch.Size([4, 1001, 256])
         x = F.dropout(x, p=0.5, training=self.training, inplace=False)
-        output = torch.sigmoid(self.fc(x))
+        output = torch.sigmoid(self.fc(x)) # size mismatch, m1: [4004 x 256], m2: [512 x 88]
         return output
 
 
 class Regress_onset_offset_frame_velocity_CRNN(nn.Module):
-    def __init__(self, frames_per_second, classes_num):
+    def __init__(self, frames_per_second, classes_num, bidirectional=True):
         super(Regress_onset_offset_frame_velocity_CRNN, self).__init__()
 
         sample_rate = 16000
@@ -175,6 +178,8 @@ class Regress_onset_offset_frame_velocity_CRNN(nn.Module):
         midfeat = 1792
         momentum = 0.01
 
+        self.bidirectional = bidirectional
+
         # Spectrogram extractor
         self.spectrogram_extractor = Spectrogram(n_fft=window_size, 
             hop_length=hop_size, win_length=window_size, window=window, 
@@ -187,18 +192,19 @@ class Regress_onset_offset_frame_velocity_CRNN(nn.Module):
 
         self.bn0 = nn.BatchNorm2d(mel_bins, momentum)
 
-        self.frame_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum)
-        self.reg_onset_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum)
-        self.reg_offset_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum)
-        self.velocity_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum)
+        self.frame_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum, bidirectional=bidirectional)
+        self.reg_onset_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum, bidirectional=bidirectional)
+        self.reg_offset_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum, bidirectional=bidirectional)
+        self.velocity_model = AcousticModelCRnn8Dropout(classes_num, midfeat, momentum, bidirectional=bidirectional)
 
-        self.reg_onset_gru = nn.GRU(input_size=88 * 2, hidden_size=256, num_layers=1, 
-            bias=True, batch_first=True, dropout=0., bidirectional=True)
-        self.reg_onset_fc = nn.Linear(512, classes_num, bias=True)
+        gru_size = 256
+        self.reg_onset_gru = nn.GRU(input_size=88 * 2, hidden_size=gru_size, num_layers=1, 
+            bias=True, batch_first=True, dropout=0., bidirectional=bidirectional)
+        self.reg_onset_fc = nn.Linear(gru_size * (2 if bidirectional else 1), classes_num, bias=True)
 
-        self.frame_gru = nn.GRU(input_size=88 * 3, hidden_size=256, num_layers=1, 
-            bias=True, batch_first=True, dropout=0., bidirectional=True)
-        self.frame_fc = nn.Linear(512, classes_num, bias=True)
+        self.frame_gru = nn.GRU(input_size=88 * 3, hidden_size=gru_size, num_layers=1, 
+            bias=True, batch_first=True, dropout=0., bidirectional=bidirectional)
+        self.frame_fc = nn.Linear(gru_size * (2 if bidirectional else 1), classes_num, bias=True)
 
         self.init_weight()
 
@@ -259,7 +265,7 @@ class Regress_onset_offset_frame_velocity_CRNN(nn.Module):
 
 
 class Regress_pedal_CRNN(nn.Module):
-    def __init__(self, frames_per_second, classes_num):
+    def __init__(self, frames_per_second, classes_num, bidirectional=True):
         super(Regress_pedal_CRNN, self).__init__()
 
         sample_rate = 16000
@@ -291,9 +297,9 @@ class Regress_pedal_CRNN(nn.Module):
 
         self.bn0 = nn.BatchNorm2d(mel_bins, momentum)
 
-        self.reg_pedal_onset_model = AcousticModelCRnn8Dropout(1, midfeat, momentum)
-        self.reg_pedal_offset_model = AcousticModelCRnn8Dropout(1, midfeat, momentum)
-        self.reg_pedal_frame_model = AcousticModelCRnn8Dropout(1, midfeat, momentum)
+        self.reg_pedal_onset_model = AcousticModelCRnn8Dropout(1, midfeat, momentum, bidirectional=bidirectional)
+        self.reg_pedal_offset_model = AcousticModelCRnn8Dropout(1, midfeat, momentum, bidirectional=bidirectional)
+        self.reg_pedal_frame_model = AcousticModelCRnn8Dropout(1, midfeat, momentum, bidirectional=bidirectional)
         
         self.init_weight()
 
@@ -335,13 +341,13 @@ class Regress_pedal_CRNN(nn.Module):
 
 # This model is not trained, but is combined from the trained note and pedal models.
 class Note_pedal(nn.Module):
-    def __init__(self, frames_per_second, classes_num):
+    def __init__(self, frames_per_second, classes_num, bidirectional=True):
         """The combination of note and pedal model.
         """
         super(Note_pedal, self).__init__()
 
-        self.note_model = Regress_onset_offset_frame_velocity_CRNN(frames_per_second, classes_num)
-        self.pedal_model = Regress_pedal_CRNN(frames_per_second, classes_num)
+        self.note_model = Regress_onset_offset_frame_velocity_CRNN(frames_per_second, classes_num, bidirectional=bidirectional)
+        self.pedal_model = Regress_pedal_CRNN(frames_per_second, classes_num, bidirectional=bidirectional)
 
     def load_state_dict(self, m, strict=False):
         self.note_model.load_state_dict(m['note_model'], strict=strict)

@@ -219,6 +219,13 @@ class Sampler(object):
                     self.pointer = 0
                     self.random_state.shuffle(self.segment_indexes)
 
+                if index >= len(self.segment_list):
+                    print("ERROR IN SAMPLER! index > length", index, len(self.segment_list), self.pointer)
+                    # rebuild
+                    self.segment_indexes = np.arange(len(self.segment_list))
+                    self.random_state.shuffle(self.segment_indexes)
+                    continue
+
                 batch_segment_list.append(self.segment_list[index])
                 i += 1
 
@@ -302,6 +309,14 @@ class TestSampler(object):
                 index = self.segment_indexes[pointer]
                 pointer += 1
                 
+                if pointer >= len(self.segment_indexes):
+                    pointer = 0
+                    self.random_state.shuffle(self.segment_indexes)
+                
+                if index >= len(self.segment_list):
+                    print("ERROR IN TESTSAMPLER! index > length", index, len(self.segment_list), pointer)
+                    continue
+
                 batch_segment_list.append(self.segment_list[index])
                 i += 1
 
@@ -331,5 +346,5 @@ def collate_fn(list_data_dict):
     np_data_dict = {}
     for key in list_data_dict[0].keys():
         np_data_dict[key] = np.array([data_dict[key] for data_dict in list_data_dict])
-    
+
     return np_data_dict

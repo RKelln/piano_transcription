@@ -9,6 +9,14 @@ Here is a demo of our piano transcription system: https://www.youtube.com/watch?
 ## Environments
 This codebase is developed with Python 3.7 and PyTorch 1.4.0 (Should work with other versions, but not fully tested).
 
+Using conda on Ubuntu 18.04, install looked like:
+```bash
+conda create -n py3.7_trch1.4_transcription python=3.7
+conda activate py3.7_trch1.4_transcription
+conda install numpy numba==0.48 scipy
+conda install pytorch==1.4.0 torchvision==0.5.0 cudatoolkit=10.1 -c pytorch
+```
+
 Install dependencies:
 ```
 pip install -r requirements.txt
